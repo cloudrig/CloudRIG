@@ -327,7 +327,12 @@ class Play extends Component {
 
 			const instanceTypeCell = config.AWSInstanceType;
 
-			const runningCell = this.state.cloudRIGState.runningTime ? this.state.cloudRIGState.runningTime + " mins" : "-";
+			let runningCell = "-";
+			if (this.state.cloudRIGState.runningTime) {
+				const runningHours = Math.floor(this.state.cloudRIGState.runningTime / 60);
+				const runningMinutes = this.state.cloudRIGState.runningTime % 60;
+				runningCell = runningHours > 0 ? `${runningHours}h ${runningMinutes} mins` : `${runningMinutes} mins`;
+			}
 
 			const remainingCell = this.state.cloudRIGState.scheduledStop
 				? this.state.cloudRIGState.remainingTime + " mins"
