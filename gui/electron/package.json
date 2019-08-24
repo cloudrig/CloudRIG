@@ -3,18 +3,18 @@
 	"productName": "cloudRIG",
 	"license": "MIT",
 	"author": {
-		"name": "William Parry",
-		"email": "williamparry@gmail.com"
+		"name": "CloudRIG",
+		"email": "benoit@cloudrig.io"
 	},
 	"main": "index.js",
 	"description": "Play games with Parsec on AWS for cheap.",
-	"version": "0.0.1-alpha.12",
+	"version": "0.0.1",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/cloudrig/cloudRIG"
 	},
 	"build": {
-		"appId": "com.williamparry.cloudrig",
+		"appId": "com.cloudrig.cloudrig",
 		"mac": {
 			"category": "public.app-category.games",
 			"hardenedRuntime": true,

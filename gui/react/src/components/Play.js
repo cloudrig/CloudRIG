@@ -472,8 +472,8 @@ class Play extends Component {
 									<List.Item>
 										<List.Icon name="mail" />
 										<List.Content>
-											<a href="mailto:williamparry@gmail.com" target="_blank" rel="noopener noreferrer">
-												williamparry@gmail.com
+											<a href="mailto:benoit@cloudrig.io" target="_blank" rel="noopener noreferrer">
+												benoit@cloudrig.io
 											</a>
 										</List.Content>
 									</List.Item>
