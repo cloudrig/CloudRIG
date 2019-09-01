@@ -1,0 +1,28 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudRIG
+
+Parameters:
+  S3BucketNamePrefix:
+    Type: String
+    Description: The S3 Bucket name prefix for deploying the CloudRIG lambda code
+
+Resources:
+
+  CloudRIGLambdaCodeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${S3BucketNamePrefix}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  CloudRIGLambdaCodeBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudRIGLambdaCodeBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${CloudRIGLambdaCodeBucket}/*"

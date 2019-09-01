@@ -2,10 +2,6 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: CloudRIG
 
 Parameters:
-  AvailabilityZone:
-    Type: AWS::EC2::AvailabilityZone::Name
-    Description: The availability zone where the CloudRIG instance is going to be deployed
-
   InstanceSpotMaximumPrice:
     Type: String
     Description: The maximum spot price for your CloudRIG instance
@@ -23,6 +19,12 @@ Parameters:
   InstanceRootEBSType:
     Type: String
     Default: gp2
+    AllowedValues:
+      - gp2
+      - io1
+      - sc1
+      - st1
+      - standard
     Description: The EBS type for the CloudRIG instance
 
   InstanceAddAdditionalEBS:
@@ -36,6 +38,12 @@ Parameters:
   InstanceAdditionalEBSType:
     Type: String
     Default: gp2
+    AllowedValues:
+      - gp2
+      - io1
+      - sc1
+      - st1
+      - standard
     Description: The EBS type for the CloudRIG instance
 
   InstanceAdditionalEBSSize:
@@ -47,7 +55,7 @@ Parameters:
     # We don't use the AWS::EC2::KeyPair::KeyName type to allow it to be empty
     Type: String
     Default: ''
-    Description: The KeyPair associated to the CloudRIG instance
+    Description: (Optionnal) The KeyPair associated to the CloudRIG instance. Leave empty if you don't want to use a KeyPair.
 
   VpcId:
     Type: AWS::EC2::VPC::Id
@@ -97,7 +105,6 @@ Metadata:
       - Label:
           default: "Network Configuration"
         Parameters:
-          - AvailabilityZone
           - VpcId
           - SubnetIds
           - SecurityGroupIngressCIDR
@@ -108,11 +115,15 @@ Metadata:
           - ParsecHostingEndPort
           - ParsecServerKey
 
-
 Conditions:
   ShouldUseAKeyPair: !Not [ !Equals [ !Ref InstanceKeyPairName, "" ]]
   ShouldDeployAnAdditionalDisk: !Equals [ !Ref InstanceAddAdditionalEBS, "" ]
   IsInstanceSupportsEphemeralDisks: !Equals [ !Ref InstanceSize, "g2.2xlarge" ]
+
+Mappings:
+  CloudRIGStaticConfiguration:
+    Versionning:
+      LambdaCodeVersion: 1.0
 
 Resources:
 
@@ -233,58 +244,66 @@ Resources:
           ToPort: !Ref ParsecHostingEndPort
       VpcId: !Ref VpcId
 
-  CloudRIGLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
+  CloudRIGSpotFleetIamRole:
+    Type: AWS::IAM::Role
     Properties:
-      LaunchTemplateName: cloudrig-instance-launch-template
-      LaunchTemplateData:
-        InstanceMarketOptions:
-          MarketType: spot
-          SpotOptions:
-            MaxPrice: !Ref InstanceSpotMaximumPrice
-            BlockDurationMinutes: 60
-            SpotInstanceType: one-time
-            InstanceInterruptionBehavior: terminate
-        BlockDeviceMappings:
-          - DeviceName: /dev/sda1
-            Ebs:
-              VolumeType: !Ref InstanceRootEBSType
-              DeleteOnTermination: false
-          - !If
-            - ShouldDeployAnAdditionalDisk
-            - DeviceName: '/dev/xvdca'
-              Ebs:
-                VolumeSize: !Ref InstanceAdditionalEBSSize
-                VolumeType: !Ref InstanceAdditionalEBSType
-                DeleteOnTermination: false
-            - !Ref AWS::NoValue
-          - !If
-            - IsInstanceSupportsEphemeralDisks
-            - DeviceName: '/dev/xvdca'
-              VirtualName: 'ephemeral0'
-            - !Ref AWS::NoValue
-        IamInstanceProfile:
-          Arn: !GetAtt CloudRIGInstanceProfile.Arn
-        ImageId: !Ref InstanceAMIId
-        InstanceType: !Ref InstanceSize
-        KeyName: !If [ShouldUseAKeyPair, !Ref InstanceKeyPairName, !Ref "AWS::NoValue"]
-        SecurityGroupIds:
-          - !GetAtt CloudRIGInstanceSecurityGroup.GroupId
-        UserData:
-          "Fn::Base64": !Sub network_server_start_port=8000:app_host=1:server_key=${ParsecServerKey}:app_check_user_data=1
+      RoleName: cloudrig-spotfleet
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - spotfleet.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: cloudrig-spotfleet-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - 'ec2:*'
+                - 'iam:ListRoles'
+                - 'iam:PassRole'
+                - 'iam:ListInstanceProfiles'
+                Resource: '*'
 
-  CloudRIGAutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
+  CloudRIGSpotFleet:
+    Type: AWS::EC2::SpotFleet
     Properties:
-      AutoScalingGroupName: cloudrig-instance-autoscaling-group
-      AvailabilityZones:
-        - !Ref AvailabilityZone
-      LaunchTemplate:
-        LaunchTemplateId: !Ref CloudRIGLaunchTemplate
-        Version: !GetAtt CloudRIGLaunchTemplate.LatestVersionNumber
-      MaxSize: "1"
-      MinSize: "0"
-      VPCZoneIdentifier: !Ref SubnetIds
+      SpotFleetRequestConfigData:
+        AllocationStrategy: lowestPrice
+        IamFleetRole: !GetAtt CloudRIGSpotFleetIamRole.Arn
+        InstanceInterruptionBehavior: stop
+        LaunchSpecifications:
+          - BlockDeviceMappings:
+            - DeviceName: '/dev/sda1'
+              Ebs:
+                VolumeType: !Ref InstanceRootEBSType
+            - !If
+              - ShouldDeployAnAdditionalDisk
+              - DeviceName: '/dev/sdb1'
+                Ebs:
+                  VolumeSize: !Ref InstanceAdditionalEBSSize
+                  VolumeType: !Ref InstanceAdditionalEBSType
+              - !Ref AWS::NoValue
+            - !If
+              - IsInstanceSupportsEphemeralDisks
+              - DeviceName: '/dev/xvdca'
+                VirtualName: 'ephemeral0'
+              - !Ref AWS::NoValue
+            InstanceType: !Ref InstanceSize
+            ImageId: !Ref InstanceAMIId
+            KeyName: !If [ShouldUseAKeyPair, !Ref InstanceKeyPairName, !Ref "AWS::NoValue"]
+            SubnetId: !Join [',', !Ref SubnetIds]
+            SecurityGroups:
+            - GroupId: !GetAtt CloudRIGInstanceSecurityGroup.GroupId
+            UserData:
+              "Fn::Base64": !Sub network_server_start_port=8000:app_host=1:server_key=${ParsecServerKey}:app_check_user_data=1
+        SpotPrice: !Ref InstanceSpotMaximumPrice
+        Type: maintain
+        TargetCapacity: 0
 
   #
   #
@@ -301,145 +320,17 @@ Resources:
       MemorySize: 128
       Role: !GetAtt CloudRIGRole.Arn
       Runtime: "nodejs8.10"
-      Timeout: 15
+      Timeout: 30
       Environment:
         Variables:
-          CLOUDRIG_AUTOSCALING_GROUP_NAME: !Ref CloudRIGAutoScalingGroup
-          CLOUDRIG_CLOUDFORMATION_STACK_NAME: !Ref AWS::StackName
+          CLOUDRIG_SPOTFLEET_REQUEST_ID: !Ref CloudRIGSpotFleet
       Code:
-        ZipFile: >
-          var AWS = require('aws-sdk');
-
-          exports.handler = (event, context, callback) => {
-
-              console.log("Triggered");
-              console.log(event);
-              console.log(context);
-
-              var ec2 = new AWS.EC2();
-              var cloudwatchevents = new AWS.CloudWatchEvents();
-              var autoscaling = new AWS.AutoScaling();
-              var lambda = new AWS.Lambda();
-              var cloudformation = new AWS.CloudFormation();
-              var ImageId;
-              var RuleArn;
-
-              function waterfall(arr, cb) {
-                  function process(arr, cb, err, data) {
-                      if (err) { cb(err); return; }
-                      if (arr.length === 0) { cb(null, data); return; }
-                      var forwardArgs = [process.bind(null, arr, cb)]
-                      if (data) { forwardArgs.unshift(data) }
-                      arr.shift().apply(null, forwardArgs)
-                  }
-                  process(arr, cb)
-              }
-
-              function newImage() {
-                  var instanceId = event.detail["instance-id"];
-                  waterfall([
-                      function (cb) {
-                          console.log("Create new AMI for instance with id " + instanceId);
-                          ec2.createImage({
-                              InstanceId: instanceId,
-                              Name: 'cloudrig-' + new Date().getTime(),
-                              NoReboot: true
-                          }, cb)
-                      },
-                      function (data, cb) {
-                          console.log("Creating tags for " + data.ImageId);
-                          ImageId = data.ImageId;
-                          ec2.createTags({
-                              Resources: [data.ImageId],
-                              Tags: [{
-                                  Key: "cloudrig",
-                                  Value: "true"
-                              }]
-                          }, cb)
-                      },
-                      function (data, cb) {
-                          console.log("Enabling the save CloudWatch rule...")
-                          cloudwatchevents.enableRule({
-                              Name: "cloudrig-save",
-                          }, cb)
-                      },
-                      function (data, cb) {
-                          console.log("Set the auto-scaling group desired capacity to 0...");
-                          autoscaling.updateAutoScalingGroup({
-                              AutoScalingGroupName: process.env.CLOUDRIG_AUTOSCALING_GROUP_NAME,
-                              DesiredCapacity: 0
-                          }, cb)
-                      },
-                      function (data, cb) {
-                          console.log("Fetching the current CloudFormation parameters...");
-                          cloudformation.describeStacks({
-                              StackName: process.env.CLOUDRIG_CLOUDFORMATION_STACK_NAME
-                          }, cb)
-                      },
-                      function (data, cb) {
-                          console.log("Update the stack parameters with the new AMI Id...");
-                          const cloudformationParameters = data.Stacks[0].Parameters
-                          for (i = 0; i < cloudformationParameters.length; i++) {
-                              // Set all the parameters to use previous value
-                              parameter = cloudformationParameters[i];
-
-                              // If the parameter is the Image ID, we replace its value
-                              if (parameter.get('ParameterKey') == 'InstanceAMIId') {
-                                  parameter.set('ParameterKey', ImageId);
-                              } else {
-                                  parameter.delete('ParameterValue');
-                                  parameter.set('UsePreviousValue', true);
-                              }
-                          }
-
-                          cloudformation.updateStack({
-                              StackName: process.env.CLOUDRIG_CLOUDFORMATION_STACK_NAME,
-                              UsePreviousTemplate: true,
-                              Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
-                              Parameters: cloudformationParameters
-                          }, cb);
-                      }
-                  ], function (err, data) {
-                      if (err) { console.log(err); callback(err); }
-                      callback();
-                  });
-              }
-              waterfall([
-                  function (cb) {
-                      ec2.describeImages({
-                          Filters: [{
-                              Name: 'tag:cloudrig',
-                              Values: ['true']
-                          }]
-                      }, cb)
-                  },
-                  function (data, cb) {
-                      if (data.Images.length > 0) {
-                          const imageIdToDeregister = data.Images[0].ImageId;
-                          console.log("Deregister previous image " + imageIdToDeregister + "...");
-                          ec2.deregisterImage({
-                              ImageId: imageIdToDeregister
-                          }, function (err, newData) {
-                              if (err) cb(err);
-                              else cb(null, data);
-                          })
-                      }
-                      else cb(null, data);
-                  },
-                  function (data, cb) {
-                      if (data.Images.length > 0 && data.Images[0].BlockDeviceMappings.length > 0) {
-                          const snapshotIdToDeregister = data.Images[0].BlockDeviceMappings[0].Ebs.SnapshotId;
-                          console.log("Delete previous snapshot " + snapshotIdToDeregister + "...");
-                          ec2.deleteSnapshot({ SnapshotId: snapshotIdToDeregister }, cb);
-                      }
-                      else cb(null);
-                  }
-              ],
-              function (err, data) {
-                  if (err) { console.log(err); callback(err); }
-                  newImage();
-              });
-          }
+        S3Bucket: !Sub "cloudrig-lambda-code-${AWS::Region}"
+        S3Key: !Join
+          - "/"
+          - - "cloudrig"
+            - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
+            - "cloudrig-lambda-orchestration-code.zip"
 
   CloudRIGOrchestrationLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -459,75 +350,17 @@ Resources:
       MemorySize: 128
       Role: !GetAtt CloudRIGRole.Arn
       Runtime: "nodejs8.10"
-      Timeout: 15
+      Timeout: 30
+      Environment:
+        Variables:
+          CLOUDRIG_CLOUDFORMATION_STACK_NAME: !Ref AWS::StackName
       Code:
-        ZipFile: >
-          var AWS = require('aws-sdk');
-
-          exports.handler = (event, context, callback) => {
-
-              console.log("Triggered");
-              console.log(event);
-              console.log(context);
-
-              var ec2 = new AWS.EC2();
-              var cloudwatchevents = new AWS.CloudWatchEvents();
-              var lambda = new AWS.Lambda();
-
-              function waterfall(arr, cb) {
-                  function process(arr, cb, err, data) {
-                      if (err) { cb(err); return; }
-                      if (arr.length === 0) { cb(null, data); return; }
-                      var forwardArgs = [process.bind(null, arr, cb)]
-                      if (data) { forwardArgs.unshift(data) }
-                      arr.shift().apply(null, forwardArgs)
-                  }
-                  process(arr, cb)
-              }
-
-              function series(arr, cb) {
-                  function process(arr, cb, err) {
-                      if(err) { cb(err); return; }
-                      if(arr.length === 0) { cb(null); return; }
-                      arr.shift().call(null, process.bind(null, arr, cb))
-                  }
-                  process(arr, cb)
-              }
-
-              waterfall([
-                  function (cb) {
-                      ec2.describeImages({
-                          Owners: ['self'],
-                          Filters: [{
-                              Name: 'tag:cloudrig',
-                              Values: ['true']
-                          }]
-                      }, cb)
-                  },
-
-                  function (data, cb) {
-                      if (data.Images.length === 0) {
-                          console.log("No image saved. Returning.");
-                          cb();
-                      } else {
-                          console.log("Image saved");
-                          series([
-                              function(cb) {
-                                  console.log("Disabling the CloudWatch rule");
-                                  cloudwatchevents.disableRule({
-                                      Name: "cloudrig-save"
-                                  }, cb)
-                              }
-                          ], cb)
-
-                      }
-                  }
-              ], function(err) {
-                  if (err) { console.log(err); callback(err); return; }
-                  console.log("Done");
-                  callback();
-              });
-          }
+        S3Bucket: !Sub "cloudrig-lambda-code-${AWS::Region}"
+        S3Key: !Join
+        - "/"
+        - - "cloudrig"
+          - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
+          - "cloudrig-lambda-handle-ami-created-code.zip"
 
   CloudRIGSaveLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -574,6 +407,6 @@ Resources:
 
 
 Outputs:
-  CloudRIGAutoScalingGroupId:
-    Description: The AutoScaling group Id used to run the CloudRIG instance
-    Value: !Ref CloudRIGAutoScalingGroup
+  CloudRIGSpotFleetId:
+    Description: The CloudRIG SpotFleet Id used to run the CloudRIG instance
+    Value: !Ref CloudRIGSpotFleet
