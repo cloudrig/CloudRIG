@@ -459,8 +459,8 @@ class Play extends Component {
 									<List.Item>
 										<Image width="14" src={DiscordIcon} verticalAlign="middle" style={{ marginRight: 4 }} />
 										<List.Content>
-											<a href="https://discordapp.com/invite/3TS2emF" target="_blank" rel="noopener noreferrer">
-												Discord (javagoogles)
+											<a href="https://discord.gg/8BXpj5F" target="_blank" rel="noopener noreferrer">
+												Discord
 											</a>
 										</List.Content>
 									</List.Item>
