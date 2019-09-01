@@ -127,69 +127,6 @@ Mappings:
 
 Resources:
 
-  #
-  #
-  #  PERMISSIONS
-  #
-  #
-
-  CloudRIGRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: cloudrig-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-            Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: cloudrig-role-policy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: 'ec2:CreateTags'
-                Resource: 'arn:aws:ec2:*::image/*'
-              - Effect: Allow
-                Action:
-                  - 'ec2:CreateImage'
-                  - 'ec2:DeleteSnapshot'
-                  - 'ec2:CancelSpotInstanceRequests'
-                  - 'ec2:DescribeInstances'
-                  - 'ec2:DescribeImages'
-                  - 'ec2:DeregisterImage'
-                  - 'ec2:TerminateInstances'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'events:DeleteRule'
-                  - 'events:ListRules'
-                  - 'events:RemoveTargets'
-                Resource: 'arn:aws:events:*:*:rule/*'
-              - Effect: Allow
-                Action:
-                  - 'events:PutTargets'
-                  - 'events:PutRule'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'lambda:AddPermission'
-                  - 'lambda:RemovePermission'
-                Resource: 'arn:aws:lambda:*:*:function:*'
-              - Effect: Allow
-                Action:
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                Resource: 'arn:aws:logs:*:*:log-group:*'
-              - Effect: Allow
-                Action: 'logs:PutLogEvents'
-                Resource: 'arn:aws:logs:*:*:log-group:*:*:*'
-              - Effect: Allow
-                Action: 'logs:CreateLogGroup'
-                Resource: '*'
 
   #
   #
@@ -200,7 +137,6 @@ Resources:
   CloudRIGInstanceProfileRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: cloudrig-instance-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -226,7 +162,6 @@ Resources:
   CloudRIGInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: cloudrig-instance-profile
       Path: /
       Roles:
         - !Ref CloudRIGInstanceProfileRole
@@ -244,10 +179,15 @@ Resources:
           ToPort: !Ref ParsecHostingEndPort
       VpcId: !Ref VpcId
 
+  #
+  #
+  #   SPOT FLEET
+  #
+  #
+
   CloudRIGSpotFleetIamRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: cloudrig-spotfleet
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -295,6 +235,8 @@ Resources:
               - !Ref AWS::NoValue
             InstanceType: !Ref InstanceSize
             ImageId: !Ref InstanceAMIId
+            IamInstanceProfile:
+              Arn: !GetAtt CloudRIGInstanceProfile.Arn
             KeyName: !If [ShouldUseAKeyPair, !Ref InstanceKeyPairName, !Ref "AWS::NoValue"]
             SubnetId: !Join [',', !Ref SubnetIds]
             SecurityGroups:
@@ -307,48 +249,99 @@ Resources:
 
   #
   #
-  #  DATA PERSISTENCE LAMBDAS
+  #  SAVING STATE LAMBDAS
   #
   #
 
-  CloudRIGOrchestrationLambda:
+  CloudRIGSaveStateLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: cloudrig-lambda-save-state
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeSpotFleetInstances'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !GetAtt CloudRIGAutomationIamRole.Arn
+              - Effect: Allow
+                Action:
+                  - 'ssm:StartAutomationExecution'
+                Resource: '*'
+        - PolicyName: cloudrig-lambda-ami-created
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:DescribeStacks'
+                  - 'ec2:DescribeImages'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'ec2:CreateTags'
+                Resource:
+                  - 'arn:aws:ec2:*::image/*'
+                  - 'arn:aws:ec2:*::snapshot/*'
+              - Effect: Allow
+                Action: 'cloudformation:UpdateStack'
+                Resource: !Ref 'AWS::StackId'
+              - Effect: Allow
+                Action:
+                  - 'ssm:StartAutomationExecution'
+                Resource: '*'
+
+  CloudRIGSaveStateLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: cloudrig-lambda
-      Description: CloudRIG Orchectration lambda
-      Handler: "index.handler"
+      Description: CloudRIG Save state lambda
+      Handler: "lambda-save-state.handler"
       MemorySize: 128
-      Role: !GetAtt CloudRIGRole.Arn
+      Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
       Runtime: "nodejs8.10"
       Timeout: 30
       Environment:
         Variables:
           CLOUDRIG_SPOTFLEET_REQUEST_ID: !Ref CloudRIGSpotFleet
+          CLOUDRIG_SAVE_STATE_AUTOMATION_DOCUMENT_NAME: !Ref CloudRIGSaveStateSSMAutomation
       Code:
         S3Bucket: !Sub "cloudrig-lambda-code-${AWS::Region}"
         S3Key: !Join
           - "/"
           - - "cloudrig"
             - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
-            - "cloudrig-lambda-orchestration-code.zip"
+            - "cloudrig-lambda-save-state.zip"
 
-  CloudRIGOrchestrationLambdaInvokePermission:
+  CloudRIGSaveStateLambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref CloudRIGOrchestrationLambda
+      FunctionName: !Ref CloudRIGSaveStateLambda
       Action: 'lambda:InvokeFunction'
       Principal: events.amazonaws.com
       SourceAccount: !Ref 'AWS::AccountId'
       SourceArn: !GetAtt CloudRIGCloudWatchRuleInstanceStoppingWatcher.Arn
 
-  CloudRIGSaveLambda:
+  CloudRIGAMICreatedLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: cloudrig-save
-      Description: CloudRIG Save lambda
-      Handler: "index.handler"
+      Description: CloudRIG AMI Created handler
+      Handler: "lambda-ami-created.handler"
       MemorySize: 128
-      Role: !GetAtt CloudRIGRole.Arn
+      Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
       Runtime: "nodejs8.10"
       Timeout: 30
       Environment:
@@ -360,22 +353,12 @@ Resources:
         - "/"
         - - "cloudrig"
           - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
-          - "cloudrig-lambda-handle-ami-created-code.zip"
-
-  CloudRIGSaveLambdaInvokePermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref CloudRIGSaveLambda
-      Action: 'lambda:InvokeFunction'
-      Principal: events.amazonaws.com
-      SourceAccount: !Ref 'AWS::AccountId'
-      SourceArn: !GetAtt CloudRIGCloudWatchRuleInstanceSave.Arn
+          - "cloudrig-lambda-ami-created.zip"
 
   CloudRIGCloudWatchRuleInstanceStoppingWatcher:
     Type: AWS::Events::Rule
     Properties:
-      Name: cloudrig-watch
-      Description: Watch if the instance is stopped and snapshot it
+      Description: Watch if the instance is stopped and create the
       EventPattern: {
         "source": [
           "aws.ec2"
@@ -389,22 +372,127 @@ Resources:
           ]
         }
       }
-      State: DISABLED
+      State: ENABLED
       Targets:
-        - Id: "trigger-cloudrig-orchestration-lambda"
-          Arn: !GetAtt CloudRIGOrchestrationLambda.Arn
+        - Id: "trigger-cloudrig-save-state-lambda"
+          Arn: !GetAtt CloudRIGSaveStateLambda.Arn
 
-  CloudRIGCloudWatchRuleInstanceSave:
-    Type: AWS::Events::Rule
+#
+#
+#   SSM RESOURCES
+#
+#
+
+  CloudRIGAutomationIamRole:
+    Type: AWS::IAM::Role
     Properties:
-      Name: cloudrig-save
-      Description: Check when the new AMI is ready and disable the this event rule
-      ScheduleExpression: "rate(1 minute)"
-      State: DISABLED
-      Targets:
-        - Id: "trigger-cloudrig-save-lambda"
-          Arn: !GetAtt CloudRIGSaveLambda.Arn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: cloudrig-ssm-automation-save-state
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateImage'
+                  - 'ec2:DescribeImages'
+                  - 'ec2:TerminateInstances'
+                  - 'ec2:ModifySpotFleetRequest'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'lambda:InvokeFunction'
+                Resource: '*'
 
+  CloudRIGSaveStateSSMAutomation:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      DocumentType: Automation
+      Tags:
+        - Key: "cloudrig"
+          Value: "true"
+      Content:
+        description: CloudRIG Save state on instance stopped
+        schemaVersion: '0.3'
+        assumeRole: !GetAtt CloudRIGAutomationIamRole.Arn
+        parameters:
+          InstanceId:
+            type: String
+            description: (Required) The InstanceId
+          AutomationAssumeRole:
+            type: String
+            description: >-
+              (Optional) The ARN of the role that allows Automation to perform the
+              actions on your behalf.
+
+        mainSteps:
+          # Create the AMI from the stopped instance
+          - name: CreateImageFromStoppedInstance
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: CreateImage
+              Name: 'cloudrig-{{global:DATE_TIME}}'
+              InstanceId: '{{ InstanceId }}'
+            outputs:
+              - Name: ImageId
+                Selector: '$.ImageId'
+                Type: String
+
+          # Scale down the SpotFleet request
+          - name: ScaleDownTheSpotFleetRequest
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: ModifySpotFleetRequest
+              SpotFleetRequestId: !Ref CloudRIGSpotFleet
+              TargetCapacity: 0
+
+          # Then terminate the instance
+          - name: TerminateInstance
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: TerminateInstances
+              InstanceIds:
+                - '{{ InstanceId }}'
+
+          # Wait for the AMI to be ready
+          - name: WaitForImageCreated
+            action: 'aws:waitForAwsResourceProperty'
+            inputs:
+              Service: ec2
+              Api: DescribeImages
+              ImageIds:
+                - 'CreateImageFromStoppedInstance.ImageId'
+              PropertySelector: '$.Images[0].State'
+              DesiredValues:
+                - "available"
+                - "invalid"
+                - "deregistered"
+                - "transient"
+                - "failed"
+                - "error"
+            outputs:
+              - Name: ImageState
+                Selector: '$.Images[0].State'
+                Type: String
+
+          # Handle the image creation
+          - name: RunLambdaHandleAMICreation
+            action: 'aws:invokeLambdaFunction'
+            maxAttempts: 3
+            timeoutSeconds: 60
+            isEnd: true
+            inputs:
+              FunctionName: !Ref CloudRIGAMICreatedLambda
+              Payload: '{"AccountId": "{{ global:ACCOUNT_ID }}", "ImageId": "{{ WaitForImageCreated.InstanceId }}"}'
 
 Outputs:
   CloudRIGSpotFleetId:
