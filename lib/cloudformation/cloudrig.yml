@@ -324,7 +324,7 @@ Resources:
           - "/"
           - - "cloudrig"
             - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
-            - "cloudrig-lambda-save-state.zip"
+            - "cloudrig-lambda-code.zip"
 
   CloudRIGSaveStateLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -353,7 +353,7 @@ Resources:
         - "/"
         - - "cloudrig"
           - !FindInMap [CloudRIGStaticConfiguration, Versionning, LambdaCodeVersion]
-          - "cloudrig-lambda-ami-created.zip"
+          - "cloudrig-lambda-code.zip"
 
   CloudRIGCloudWatchRuleInstanceStoppingWatcher:
     Type: AWS::Events::Rule
@@ -374,7 +374,7 @@ Resources:
       }
       State: ENABLED
       Targets:
-        - Id: "trigger-cloudrig-save-state-lambda"
+        - Id: "TriggerSaveStateLambda"
           Arn: !GetAtt CloudRIGSaveStateLambda.Arn
 
 #
@@ -425,11 +425,6 @@ Resources:
           InstanceId:
             type: String
             description: (Required) The InstanceId
-          AutomationAssumeRole:
-            type: String
-            description: >-
-              (Optional) The ARN of the role that allows Automation to perform the
-              actions on your behalf.
 
         mainSteps:
           # Create the AMI from the stopped instance
