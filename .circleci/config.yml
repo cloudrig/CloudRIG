@@ -9,6 +9,8 @@ jobs:
       - run: yarn install
       - run: cd gui && yarn install
       - run: yarn build --publish=never
+      - store_artifacts:
+          path: /home/circleci/project/_releases
 workflows:
   version: 2
   build_and_test:
