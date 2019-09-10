@@ -205,9 +205,12 @@ Resources:
                 Action:
                 - 'ec2:*'
                 - 'iam:ListRoles'
-                - 'iam:PassRole'
                 - 'iam:ListInstanceProfiles'
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !GetAtt CloudRIGInstanceProfileRole.Arn
 
   CloudRIGSpotFleet:
     Type: AWS::EC2::SpotFleet
@@ -304,6 +307,49 @@ Resources:
                 Action:
                   - 'ssm:StartAutomationExecution'
                 Resource: '*'
+          - PolicyName: cloudrig-lambda-update-ami-in-stack
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Sid: AllowToCreateTheChangeSet
+                  Effect: Allow
+                  Action:
+                    - "iam:GetRole"
+                    - "iam:GetInstanceProfile"
+                    - "iam:GetPolicy"
+                    - "iam:GetRolePolicy"
+                    - "ec2:DescribeVpcs"
+                    - "ec2:DescribeSubnets"
+                    - "ec2:DescribeSpotFleetRequests"
+                  Resources: '*'
+                - Sid: AllowToPassTheInstanceProfileRole
+                  Effect: Allow
+                  Action:
+                    - "iam:PassRole"
+                  Resources:
+                    - !GetAtt CloudRIGInstanceProfileRole.Arn
+                    - !GetAtt CloudRIGSpotFleetIamRole.Arn
+                - Sid: AllowToUpdateTheSpotFleet
+                  Effect: Allow
+                  Action:
+                    - "ec2:RequestSpotFleet"
+                    - "ec2:CancelSpotFleetRequests"
+                    - "ec2:CreateTags"
+                    - "ec2:RunInstances"
+                  Resources: '*'
+                - Sid: AllowToUpdateTheSSMAutomation
+                  Effect: Allow
+                  Action:
+                    - "ssm:CreateDocument"
+                    - "ssm:DescribeDocument"
+                    - "ssm:DeleteDocument"
+                    - "ssm:AddTagsToResource"
+                - Sid: AllowToUpdateEnvironmentVariable
+                  Effect: Allow
+                  Action:
+                    - "lambda:UpdateFunctionConfiguration"
+                  Resources: !GetAtt CloudRIGSaveStateLambda.Arn
+
 
   CloudRIGSaveStateLambda:
     Type: AWS::Lambda::Function
@@ -312,7 +358,7 @@ Resources:
       Handler: "lambda-save-state.handler"
       MemorySize: 128
       Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
-      Runtime: "nodejs8.10"
+      Runtime: "python3.7"
       Timeout: 30
       Environment:
         Variables:
@@ -342,8 +388,8 @@ Resources:
       Handler: "lambda-ami-created.handler"
       MemorySize: 128
       Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
-      Runtime: "nodejs8.10"
-      Timeout: 30
+      Runtime: "python3.7"
+      Timeout: 180
       Environment:
         Variables:
           CLOUDRIG_CLOUDFORMATION_STACK_NAME: !Ref AWS::StackName
@@ -465,7 +511,7 @@ Resources:
               Service: ec2
               Api: DescribeImages
               ImageIds:
-                - 'CreateImageFromStoppedInstance.ImageId'
+                - '{{ CreateImageFromStoppedInstance.ImageId }}'
               PropertySelector: '$.Images[0].State'
               DesiredValues:
                 - "available"
@@ -487,7 +533,7 @@ Resources:
             isEnd: true
             inputs:
               FunctionName: !Ref CloudRIGAMICreatedLambda
-              Payload: '{"AccountId": "{{ global:ACCOUNT_ID }}", "ImageId": "{{ WaitForImageCreated.InstanceId }}"}'
+              Payload: '{"AccountId": "{{ global:ACCOUNT_ID }}", "ImageId": "{{ CreateImageFromStoppedInstance.ImageId }}"}'
 
 Outputs:
   CloudRIGSpotFleetId:
