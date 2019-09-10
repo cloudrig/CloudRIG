@@ -28,7 +28,7 @@ def tag_image_and_snapshots(ami_id, ami_description):
 	resources_to_tag = []
 	resources_to_tag.append(ami_id)
 	for mapping in ami_description['BlockDeviceMappings']:
-		if mapping['Ebs'] and mapping['Ebs']['SnapshotId']:
+		if 'Ebs' in mapping.keys() and 'SnapshotId' in mapping['Ebs'].keys():
 			resources_to_tag.append(mapping['Ebs']['SnapshotId'])
 
 	# Tag the resources
@@ -97,12 +97,12 @@ def update_cloudformation_with_new_ami(ami_id):
 def deregister_previous_image(new_ami_id):
 	amis = ec2.describe_images(Filters=[
 		{
-			Name: 'tag:cloudrig',
-			Values: ['true']
+			'Name': 'tag:cloudrig',
+			'Values': ['true']
 		},
 		{
-			Name: 'tag:cloudrig:cloudformation:stackname',
-			Values: [process.env.CLOUDRIG_CLOUDFORMATION_STACK_NAME]
+			'Name': 'tag:cloudrig:cloudformation:stackname',
+			'Values': [os.environ['CLOUDRIG_CLOUDFORMATION_STACK_NAME']]
 		}
 	])['Images']
 
@@ -118,14 +118,14 @@ def deregister_previous_image(new_ami_id):
 	# Deregister the images
 	logger.info(f'Deregistering the previous AMIs {json.dumps(amis_ids_to_deregister)}...')
 	for ami_id_to_deregister in amis_ids_to_deregister:
-		ec2.deregister_image(ImageId=ami_id_to_deregister)
+		ami_to_deregister = ec2.deregister_image(ImageId=ami_id_to_deregister)
 
 		# Delete the associated snapshots
 		for mapping in ami_to_deregister['BlockDeviceMappings']:
-			if mapping['Ebs'] and mapping['SnapshotId']:
-				snpashot_id = mapping['SnapshotId']
-				logger.info(f'Deleting the previous AMI snapshot {snpashot_id}...')
-				ec2.delete_snapshot(SnapshotId=snpashot_id)
+			if 'Ebs' in mapping.keys() and 'SnapshotId' in mapping['Ebs'].keys():
+				snapshot_id = mapping['SnapshotId']
+				logger.info(f'Deleting the previous AMI snapshot {snapshot_id}...')
+				ec2.delete_snapshot(SnapshotId=snapshot_id)
 
 
 def handler(event, context):

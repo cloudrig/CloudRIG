@@ -332,10 +332,13 @@ Resources:
                 - Sid: AllowToUpdateTheSpotFleet
                   Effect: Allow
                   Action:
+                    # SpotFleet request update
                     - "ec2:RequestSpotFleet"
-                    - "ec2:CancelSpotFleetRequests"
                     - "ec2:CreateTags"
                     - "ec2:RunInstances"
+                    # Resources Cleanup
+                    - "ec2:CancelSpotFleetRequests"
+                    - "ec2:DeregisterImage"
                   Resources: '*'
                 - Sid: AllowToUpdateTheSSMAutomation
                   Effect: Allow
