@@ -1,0 +1,19 @@
+name: CloudRIG
+
+on:
+  push:
+    paths:
+      - 'www.cloudrig.io/*'
+
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Build
+        run: echo 'Nothing for the moment'
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'

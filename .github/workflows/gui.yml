@@ -1,0 +1,34 @@
+name: CloudRIG
+
+on:
+  push:
+    paths:
+      - 'gui/*'
+      - 'lib/*'
+
+jobs:
+  gui:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Build lib
+        run: |
+          cd lib
+          yarn install
+      - name: Build gui
+        run: |
+          cd gui
+          yarn install
+      - name: Audit dependencies
+        run: |
+          echo 'Auditing gui/package.json...'
+          (cd gui && yarn audit)
+          echo 'Auditing gui/electron/package.json...'
+          (cd gui/electron && yarn audit)
+          echo 'Auditing gui/react/package.json...'
+          (cd gui/react && yarn audit)
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'
