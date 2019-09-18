@@ -1,0 +1,26 @@
+name: CloudRIG release
+
+# Only trigger on release
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - v*
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macOS-latest]
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Install dependencies
+        run: |
+          yarn install
+          (cd lib && yarn install)
+          (cd cli && yarn install)
+          (cd gui && yarn install)
+
