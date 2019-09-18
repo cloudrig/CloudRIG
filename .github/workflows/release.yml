@@ -1,12 +1,9 @@
 name: CloudRIG release
 
-# Only trigger on release
+# Only trigger when a release is created
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - v*
+  release:
+    types: [created]
 
 jobs:
   release:
@@ -17,6 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-node@v1
+      - name: Get version
+        run: git describe --exact-match --tags $(git log -n1 --pretty='%h')
       - name: Install dependencies
         run: |
           yarn install
