@@ -3,20 +3,32 @@ name: CloudRIG
 on: push
 
 jobs:
-  build-macos:
+  build-lib:
     runs-on: macOS-latest
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-node@v1
       - name: Common - Install dependencies
         run: yarn install
-
       - name: Lib - Build
         run: |
           cd lib
           yarn install
 
+  build-cli:
+    runs-on: macOS-latest
+    needs: build-lib
+    steps:
       - name: CLI - Build
         run: |
           cd cli
+          yarn install
+
+  build-gui:
+    runs-on: macOS-latest
+    needs: build-lib
+    steps:
+      - name: GUI - Build
+        run: |
+          cd gui
           yarn install
