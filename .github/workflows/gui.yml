@@ -3,6 +3,7 @@ name: CloudRIG GUI
 on:
   push:
     paths:
+      - '.github/workflows/*'
       - 'gui/*'
       - 'lib/*'
 

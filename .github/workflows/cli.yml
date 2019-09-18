@@ -3,6 +3,7 @@ name: CloudRIG CLI
 on:
   push:
     paths:
+      - '.github/workflows/*'
       - 'cli/*'
       - 'lib/*'
 

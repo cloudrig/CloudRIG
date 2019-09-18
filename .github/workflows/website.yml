@@ -3,6 +3,7 @@ name: CloudRIG website
 on:
   push:
     paths:
+      - '.github/workflows/*'
       - 'www.cloudrig.io/*'
 
 jobs:
