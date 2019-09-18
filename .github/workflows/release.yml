@@ -1,0 +1,36 @@
+name: CloudRIG release
+
+# Only trigger when a release is created
+on:
+  release:
+    types: [created]
+
+jobs:
+  release-app:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macOS-latest]
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Get version
+        run: git describe --exact-match --tags $(git log -n1 --pretty='%h')
+      - name: Install dependencies
+        run: |
+          yarn install
+          (cd lib && yarn install)
+          (cd cli && yarn install)
+          (cd gui && yarn install)
+
+  release-website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Deploy website
+        uses: actions/aws/cli@master
+        args: "s3 sync --delete www.cloudrig.io s3://www.cloudrig.io/"
+        secrets:
+          - "CICD_AWS_ACCESS_KEY_ID"
+          - "CICD_AWS_SECRET_ACCESS_KEY"

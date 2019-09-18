@@ -1,0 +1,26 @@
+name: CloudRIG lib
+
+on:
+  push:
+    paths:
+      - '.github/workflows/*'
+      - 'lib/*'
+
+jobs:
+  lib:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Common - Install dependencies
+        run: yarn install
+      - name: Build
+        run: |
+          cd lib
+          yarn install
+      - name: Audit dependencies
+        run: yarn audit
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'

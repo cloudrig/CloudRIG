@@ -1,0 +1,29 @@
+name: CloudRIG CLI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/*'
+      - 'cli/*'
+      - 'lib/*'
+
+jobs:
+  cli:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Build lib
+        run: |
+          cd lib
+          yarn install
+      - name: Build cli
+        run: |
+          cd cli
+          yarn install
+      - name: Audit dependencies
+        run: yarn audit
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'

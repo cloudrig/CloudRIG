@@ -11,3 +11,5 @@
 * New Github repository (https://github.com/cloudrig/CloudRIG)
 * Format running time to include hours instead of just minutes
 
+## v0.0.2
+* Add a Github Actions workflow to validate the Pull Requests
