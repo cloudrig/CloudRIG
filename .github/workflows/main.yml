@@ -14,6 +14,7 @@ jobs:
         run: |
           cd lib
           yarn install
+          cd ..
 
   build-cli:
     runs-on: macOS-latest
