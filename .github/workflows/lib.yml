@@ -1,4 +1,4 @@
-name: CloudRIG
+name: CloudRIG lib
 
 on:
   push:

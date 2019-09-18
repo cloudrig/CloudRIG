@@ -1,4 +1,4 @@
-name: CloudRIG
+name: CloudRIG GUI
 
 on:
   push:
