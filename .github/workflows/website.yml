@@ -7,7 +7,7 @@ on:
       - 'www.cloudrig.io/*'
 
 jobs:
-  website:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1

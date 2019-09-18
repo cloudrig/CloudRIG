@@ -8,7 +8,7 @@ on:
       - 'lib/*'
 
 jobs:
-  gui:
+  build:
     runs-on: macOS-latest
     steps:
       - uses: actions/checkout@v1
