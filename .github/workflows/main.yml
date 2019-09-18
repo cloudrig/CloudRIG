@@ -3,7 +3,7 @@ name: CloudRIG
 on: push
 
 jobs:
-  build-lib:
+  lib:
     runs-on: macOS-latest
     steps:
       - uses: actions/checkout@v1
@@ -19,7 +19,7 @@ jobs:
       - name: Testing
         run: echo 'Nothing for the moment'
 
-  build-cli:
+  cli:
     runs-on: macOS-latest
     steps:
       - uses: actions/checkout@v1
@@ -30,7 +30,6 @@ jobs:
           yarn install
       - name: Build cli
         run: |
-          ls -al && pwd
           cd cli
           yarn install
       - name: Linting
@@ -38,7 +37,7 @@ jobs:
       - name: Testing
         run: echo 'Nothing for the moment'
 
-  build-gui:
+  gui:
     runs-on: macOS-latest
     needs: build-lib
     steps:
@@ -50,6 +49,5 @@ jobs:
           yarn install
       - name: Build gui
         run: |
-          ls -al && pwd
           cd gui
           yarn install
