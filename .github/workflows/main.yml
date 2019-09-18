@@ -1,0 +1,14 @@
+name: CloudRIG CI/CD
+
+on: push
+  
+jobs:
+  build-macos:
+    runs-on: macOS-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-node@v1
+    - name: Common - Install dependencies
+      run: yarn build
+
+
