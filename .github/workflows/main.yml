@@ -14,6 +14,8 @@ jobs:
         run: |
           cd lib
           yarn install
+      - name: Audit dependencies
+        run: yarn audit
       - name: Linting
         run: echo 'Nothing for the moment'
       - name: Testing
@@ -32,6 +34,8 @@ jobs:
         run: |
           cd cli
           yarn install
+      - name: Audit dependencies
+        run: yarn audit
       - name: Linting
         run: echo 'Nothing for the moment'
       - name: Testing
@@ -50,3 +54,12 @@ jobs:
         run: |
           cd gui
           yarn install
+      - name: Audit dependencies
+        run: |
+          yarn audit
+          (cd electron && yarn audit)
+          (cd react && yarn audit)
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'
