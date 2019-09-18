@@ -10,32 +10,46 @@ jobs:
       - uses: actions/setup-node@v1
       - name: Common - Install dependencies
         run: yarn install
-      - name: Lib - Build
+      - name: Build
         run: |
-          ls -al
-          pwd
           cd lib
           yarn install
-          cd ..
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'
 
   build-cli:
     runs-on: macOS-latest
-    needs: build-lib
     steps:
-      - name: CLI - Build
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Build lib
         run: |
-          ls -al
-          pwd
+          cd lib
+          yarn install
+      - name: Build cli
+        run: |
+          ls -al && pwd
           cd cli
           yarn install
+      - name: Linting
+        run: echo 'Nothing for the moment'
+      - name: Testing
+        run: echo 'Nothing for the moment'
 
   build-gui:
     runs-on: macOS-latest
     needs: build-lib
     steps:
-      - name: GUI - Build
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+      - name: Build lib
         run: |
-          ls -al
-          pwd
+          cd lib
+          yarn install
+      - name: Build gui
+        run: |
+          ls -al && pwd
           cd gui
           yarn install
