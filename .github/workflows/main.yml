@@ -39,7 +39,6 @@ jobs:
 
   gui:
     runs-on: macOS-latest
-    needs: build-lib
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-node@v1
