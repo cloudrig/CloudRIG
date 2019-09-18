@@ -56,8 +56,11 @@ jobs:
           yarn install
       - name: Audit dependencies
         run: |
+          echo 'Auditing gui/package.json...'
           (cd gui && yarn audit)
+          echo 'Auditing gui/electron/package.json...'
           (cd gui/electron && yarn audit)
+          echo 'Auditing gui/react/package.json...'
           (cd gui/react && yarn audit)
       - name: Linting
         run: echo 'Nothing for the moment'
