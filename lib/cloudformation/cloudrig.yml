@@ -6,7 +6,7 @@ Parameters:
     Type: String
     Description: The maximum spot price for your CloudRIG instance
 
-  InstanceSize:
+  InstanceType:
     Type: String
     Default: g3s.xlarge
     AllowedValues: ["g2.2xlarge", "g3s.xlarge", "g3.4xlarge"]
@@ -35,6 +35,11 @@ Parameters:
       - false
     Description: Determine if we the instance should have an additional disk
 
+  InstanceAdditionalEBSSnapshotId:
+    Type: String
+    Default: ''
+    Description: The SnapshotId used to create the volume. If leaved empty a new volume will be created.
+
   InstanceAdditionalEBSType:
     Type: String
     Default: gp2
@@ -47,7 +52,7 @@ Parameters:
     Description: The EBS type for the CloudRIG instance
 
   InstanceAdditionalEBSSize:
-    Type: String
+    Type: Number
     Default: 100
     Description: The EBS size (in Gb) for the CloudRIG instance
 
@@ -91,7 +96,7 @@ Metadata:
       - Label:
           default: "Instance Configuration"
         Parameters:
-          - InstanceSize
+          - InstanceType
           - InstanceAMIId
           - InstanceSpotMaximumPrice
           - InstanceKeyPairName
@@ -102,6 +107,7 @@ Metadata:
           - InstanceAddAdditionalEBS
           - InstanceAdditionalEBSType
           - InstanceAdditionalEBSSize
+          - InstanceAdditionalEBSSnapshotId
       - Label:
           default: "Network Configuration"
         Parameters:
@@ -117,8 +123,7 @@ Metadata:
 
 Conditions:
   ShouldUseAKeyPair: !Not [ !Equals [ !Ref InstanceKeyPairName, "" ]]
-  ShouldDeployAnAdditionalDisk: !Equals [ !Ref InstanceAddAdditionalEBS, "" ]
-  IsInstanceSupportsEphemeralDisks: !Equals [ !Ref InstanceSize, "g2.2xlarge" ]
+  IsInstanceSupportsEphemeralDisks: !Equals [ !Ref InstanceType, "g2.2xlarge" ]
 
 Mappings:
   CloudRIGStaticConfiguration:
@@ -225,18 +230,11 @@ Resources:
               Ebs:
                 VolumeType: !Ref InstanceRootEBSType
             - !If
-              - ShouldDeployAnAdditionalDisk
-              - DeviceName: '/dev/sdb1'
-                Ebs:
-                  VolumeSize: !Ref InstanceAdditionalEBSSize
-                  VolumeType: !Ref InstanceAdditionalEBSType
-              - !Ref AWS::NoValue
-            - !If
               - IsInstanceSupportsEphemeralDisks
               - DeviceName: '/dev/xvdca'
                 VirtualName: 'ephemeral0'
               - !Ref AWS::NoValue
-            InstanceType: !Ref InstanceSize
+            InstanceType: !Ref InstanceType
             ImageId: !Ref InstanceAMIId
             IamInstanceProfile:
               Arn: !GetAtt CloudRIGInstanceProfile.Arn
@@ -256,7 +254,7 @@ Resources:
   #
   #
 
-  CloudRIGSaveStateLambdaExecutionRole:
+  CloudRIGLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -307,52 +305,53 @@ Resources:
                 Action:
                   - 'ssm:StartAutomationExecution'
                 Resource: '*'
-          - PolicyName: cloudrig-lambda-update-ami-in-stack
-            PolicyDocument:
-              Version: '2012-10-17'
-              Statement:
-                - Sid: AllowToCreateTheChangeSet
-                  Effect: Allow
-                  Action:
-                    - "iam:GetRole"
-                    - "iam:GetInstanceProfile"
-                    - "iam:GetPolicy"
-                    - "iam:GetRolePolicy"
-                    - "ec2:DescribeVpcs"
-                    - "ec2:DescribeSubnets"
-                    - "ec2:DescribeSpotFleetRequests"
-                  Resources: '*'
-                - Sid: AllowToPassTheInstanceProfileRole
-                  Effect: Allow
-                  Action:
-                    - "iam:PassRole"
-                  Resources:
-                    - !GetAtt CloudRIGInstanceProfileRole.Arn
-                    - !GetAtt CloudRIGSpotFleetIamRole.Arn
-                - Sid: AllowToUpdateTheSpotFleet
-                  Effect: Allow
-                  Action:
-                    # SpotFleet request update
-                    - "ec2:RequestSpotFleet"
-                    - "ec2:CreateTags"
-                    - "ec2:RunInstances"
-                    # Resources Cleanup
-                    - "ec2:CancelSpotFleetRequests"
-                    - "ec2:DeregisterImage"
-                  Resources: '*'
-                - Sid: AllowToUpdateTheSSMAutomation
-                  Effect: Allow
-                  Action:
-                    - "ssm:CreateDocument"
-                    - "ssm:DescribeDocument"
-                    - "ssm:DeleteDocument"
-                    - "ssm:AddTagsToResource"
-                - Sid: AllowToUpdateEnvironmentVariable
-                  Effect: Allow
-                  Action:
-                    - "lambda:UpdateFunctionConfiguration"
-                  Resources: !GetAtt CloudRIGSaveStateLambda.Arn
-
+        - PolicyName: cloudrig-lambda-update-ami-in-stack
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowToCreateTheChangeSet
+                Effect: Allow
+                Action:
+                  - "iam:GetRole"
+                  - "iam:GetInstanceProfile"
+                  - "iam:GetPolicy"
+                  - "iam:GetRolePolicy"
+                  - "ec2:DescribeVpcs"
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeSpotFleetRequests"
+                Resource: '*'
+              - Sid: AllowToPassTheInstanceProfileRole
+                Effect: Allow
+                Action:
+                  - "iam:PassRole"
+                Resource:
+                  - !GetAtt CloudRIGInstanceProfileRole.Arn
+                  - !GetAtt CloudRIGSpotFleetIamRole.Arn
+              - Sid: AllowToUpdateTheSpotFleet
+                Effect: Allow
+                Action:
+                  # SpotFleet request update
+                  - "ec2:RequestSpotFleet"
+                  - "ec2:CreateTags"
+                  - "ec2:RunInstances"
+                  # Resources Cleanup
+                  - "ec2:CancelSpotFleetRequests"
+                  - "ec2:DeregisterImage"
+                  - "ec2:DeleteSnapshot"
+                Resource: '*'
+              - Sid: AllowToUpdateTheSSMAutomation
+                Effect: Allow
+                Action:
+                  - "ssm:CreateDocument"
+                  - "ssm:DescribeDocument"
+                  - "ssm:DeleteDocument"
+                  - "ssm:AddTagsToResource"
+                Resource: "*"
+              - Sid: AllowToUpdateEnvironmentVariable
+                Effect: Allow
+                Action:
+                  - "lambda:UpdateFunctionConfiguration"
+                Resource: "*"
 
   CloudRIGSaveStateLambda:
     Type: AWS::Lambda::Function
@@ -360,7 +359,7 @@ Resources:
       Description: CloudRIG Save state lambda
       Handler: "lambda-save-state.handler"
       MemorySize: 128
-      Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
+      Role: !GetAtt CloudRIGLambdaExecutionRole.Arn
       Runtime: "python3.7"
       Timeout: 30
       Environment:
@@ -390,12 +389,13 @@ Resources:
       Description: CloudRIG AMI Created handler
       Handler: "lambda-ami-created.handler"
       MemorySize: 128
-      Role: !GetAtt CloudRIGSaveStateLambdaExecutionRole.Arn
+      Role: !GetAtt CloudRIGLambdaExecutionRole.Arn
       Runtime: "python3.7"
       Timeout: 180
       Environment:
         Variables:
           CLOUDRIG_CLOUDFORMATION_STACK_NAME: !Ref AWS::StackName
+          CLOUDRIG_HAS_ADDITIONAL_DISK: !Ref InstanceAddAdditionalEBS
       Code:
         S3Bucket: !Sub "cloudrig-lambda-code-${AWS::Region}"
         S3Key: !Join
@@ -458,6 +458,35 @@ Resources:
               - Effect: Allow
                 Action: 'lambda:InvokeFunction'
                 Resource: '*'
+        - PolicyName: cloudrig-ssm-automation-run-instance
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowToIncreaseTheNumberOfSpotFleetRequestIntances
+                Effect: Allow
+                Action:
+                  - 'ec2:RunInstances'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:ModifySpotFleetRequest'
+                Resource: '*'
+              - Sid: AllowToCreateAdditionalVolume
+                Effect: Allow
+                Action:
+                  - 'ssm:StartAutomationExecution'
+                  - 'ssm:GetAutomationExecution'
+                  - 'ssm:DescribeInstanceInformation'
+                  - 'ec2:CreateVolume'
+                  - 'ec2:DescribeVolumes'
+                  - 'ec2:DescribeSnapshots'
+                Resource: '*'
+              - Sid: AllowToPassTheInstanceProfileRole
+                Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !GetAtt CloudRIGInstanceProfileRole.Arn
+              - Effect: Allow
+                Action: 'lambda:InvokeFunction'
+                Resource: '*'
 
   CloudRIGSaveStateSSMAutomation:
     Type: 'AWS::SSM::Document'
@@ -466,6 +495,8 @@ Resources:
       Tags:
         - Key: "cloudrig"
           Value: "true"
+        - Key: "cloudrig:stackname"
+          Value: !Ref AWS::StackName
       Content:
         description: CloudRIG Save state on instance stopped
         schemaVersion: '0.3'
@@ -476,6 +507,55 @@ Resources:
             description: (Required) The InstanceId
 
         mainSteps:
+          # Detach the additional volume to snapshot it separately
+          - name: HasAdditionalVolume
+            action: aws:branch
+            inputs:
+              Choices:
+                - NextStep: GetAdditionalVolumeId
+                  Variable: !Ref InstanceAddAdditionalEBS
+                  StringEquals: "true"
+              Default: CreateImageFromStoppedInstance
+
+          - name: GetAdditionalVolumeId
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: DescribesVolumes
+              Filters:
+                - Name: attachment.instance-id
+                  Values:
+                    - '{{ InstanceId }}'
+                - Name: tag:cloudrig:additionaldisk
+                  Values:
+                    - 'true'
+            outputs:
+              - Name: VolumeId
+                Selector: '$.Volumes[0].VolumeId'
+                Type: String
+
+          - name: SnapshotAdditionalDisk
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: CreateSnapshot
+              VolumeId: '{{ GetAdditionalVolumeId.VolumeId }}'
+              TagSpecifications:
+                - ResourceType: volume
+                  Tags:
+                    - Key: 'cloudrig'
+                      Value: 'true'
+                    - Key: 'cloudrig:additionaldisk'
+                      Value: 'true'
+                    - Key: 'cloudrig:automationexecutionid'
+                      Value: '{{ automation:EXECUTION_ID }}'
+                    - Key: 'cloudrig:cloudformation:stackname'
+                      Value: !Ref 'AWS::StackName'
+            outputs:
+              - Name: SnapshotId
+                Selector: '$.SnapshotId'
+                Type: String
+
           # Create the AMI from the stopped instance
           - name: CreateImageFromStoppedInstance
             action: 'aws:executeAwsApi'
@@ -536,7 +616,471 @@ Resources:
             isEnd: true
             inputs:
               FunctionName: !Ref CloudRIGAMICreatedLambda
-              Payload: '{"AccountId": "{{ global:ACCOUNT_ID }}", "ImageId": "{{ CreateImageFromStoppedInstance.ImageId }}"}'
+              Payload: '{"AccountId": "{{ global:ACCOUNT_ID }}", "ImageId": "{{ CreateImageFromStoppedInstance.ImageId }}", "AutomationId": "{{ automation:EXECUTION_ID }}"'
+
+
+  CloudRIGStartInstanceSSMAutomation:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      DocumentType: Automation
+      Tags:
+        - Key: "cloudrig"
+          Value: "true"
+        - Key: "cloudrig:stackname"
+          Value: !Ref AWS::StackName
+      Content:
+        description: CloudRIG Start a new instance
+        schemaVersion: '0.3'
+        assumeRole: !GetAtt CloudRIGAutomationIamRole.Arn
+        mainSteps:
+          # Scale up the SpotFleet request
+          - name: ScaleUpTheSpotFleetRequest
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: ModifySpotFleetRequest
+              SpotFleetRequestId: !Ref CloudRIGSpotFleet
+              TargetCapacity: 1
+
+          # Wait for the instance to be created
+          - name: WaitForInstanceToBeReady
+            action: 'aws:waitForAwsResourceProperty'
+            inputs:
+              Service: ec2
+              Api: DescribeInstances
+              Filters:
+                - Name: 'tag:aws:ec2spot:fleet-request-id'
+                  Values:
+                    - !Ref CloudRIGSpotFleet
+              PropertySelector: '$.Reservations[0].Instances[0].State.Name'
+              DesiredValues:
+                - "running"
+
+          - name: GetInstanceDescription
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: DescribeInstances
+              Filters:
+                - Name: 'tag:aws:ec2spot:fleet-request-id'
+                  Values:
+                    - !Ref CloudRIGSpotFleet
+            outputs:
+              - Name: InstanceId
+                Selector: '$.Reservations[0].Instances[0].InstanceId'
+                Type: String
+              - Name: InstanceId
+                Selector: '$.Reservations[0].Instances[0].InstanceType'
+                Type: String
+              - Name: InstanceAvailabilityZone
+                Selector: '$.Reservations[0].Instances[0].Placement.AvailabilityZone'
+                Type: String
+
+          - name: WaitForInstanceToBeConnectedToSSM
+            action: aws:executeAutomation
+            maxAttempts: 1
+            timeoutSeconds: 3600
+            onFailure: Abort
+            inputs:
+              DocumentName: !Ref CloudRIGWaitInstanceToBeReadySSMAutomation
+              RuntimeParameters:
+                InstanceId: "{{ GetInstanceDescription.InstanceId }}"
+
+          - name: InitiliseVolumes
+            action: aws:executeAutomation
+            maxAttempts: 1
+            timeoutSeconds: 3600
+            onFailure: Abort
+            inputs:
+              DocumentName: !Ref CloudRIGVolumeCreationSSMAutomation
+              RuntimeParameters:
+                InstanceId: "{{ GetInstanceDescription.InstanceId }}"
+                InstanceAvailabilityZone: "{{ GetInstanceDescription.InstanceAvailabilityZone }}"
+                InstanceAddAdditionalEBS: !Ref InstanceAddAdditionalEBS
+                InstanceAdditionalEBSType: !Ref InstanceAdditionalEBSType
+                InstanceAdditionalEBSSize: !Ref InstanceAdditionalEBSSize
+                InstanceAdditionalEBSSnapshotId: !Ref InstanceAdditionalEBSSnapshotId
+
+          - name: InitiliseOperatingSystem
+            action: aws:executeAutomation
+            maxAttempts: 1
+            timeoutSeconds: 3600
+            onFailure: Abort
+            inputs:
+              DocumentName: !Ref CloudRIGInitialiseOperatingSystemSSMAutomation
+              RuntimeParameters:
+                InstanceId: "{{ GetInstanceDescription.InstanceId }}"
+
+  CloudRIGWaitInstanceToBeReadySSMAutomation:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      DocumentType: Automation
+      Tags:
+        - Key: "cloudrig"
+          Value: "true"
+        - Key: "cloudrig:stackname"
+          Value: !Ref AWS::StackName
+      Content:
+        description: CloudRIG Wait for an instance to be ready
+        schemaVersion: '0.3'
+        assumeRole: !GetAtt CloudRIGAutomationIamRole.Arn
+        parameters:
+          InstanceId:
+            type: String
+            description: (Required) The InstanceId
+
+        mainSteps:
+          # Wait for the instance to be registered in SSM
+          - name: WaitForInstanceToBeRegisteredInSSM
+            action: 'aws:waitForAwsResourceProperty'
+            inputs:
+              Service: ssm
+              Api: DescribeInstanceInformation
+              InstanceInformationFilterList:
+                - key: 'InstanceIds'
+                  valueSet:
+                    - '{{ InstanceId }}'
+              PropertySelector: '$.InstanceInformationList[0].PingStatus'
+              DesiredValues:
+                - "Online"
+
+  CloudRIGVolumeCreationSSMAutomation:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      DocumentType: Automation
+      Tags:
+        - Key: "cloudrig"
+          Value: "true"
+        - Key: "cloudrig:stackname"
+          Value: !Ref AWS::StackName
+      Content:
+        description: CloudRIG Start a new instance
+        schemaVersion: '0.3'
+        assumeRole: !GetAtt CloudRIGAutomationIamRole.Arn
+        parameters:
+          InstanceId:
+            type: String
+            description: (Required) The InstanceId
+          InstanceType:
+            type: String
+            description: (Required) The instance type
+          InstanceAvailabilityZone:
+            type: String
+            description: (Required) The availability zone where the instance is running
+          InstanceAddAdditionalEBS:
+            type: String
+            description: (Required) The EBS type for the additional disk
+          InstanceAdditionalEBSType:
+            type: String
+            description: (Required) The EBS type for the additional disk
+          InstanceAdditionalEBSSize:
+            type: Integer
+            description: (Required) The EBS size (in GB) for the additional disk
+          InstanceAdditionalEBSSnapshotId:
+            type: String
+            description: (Required) The source snapshot for the new volume
+
+
+
+        mainSteps:
+          - name: BranchInitAdditionalDisk
+            action: aws:branch
+            inputs:
+              Choices:
+                - NextStep: CreateAdditionalVolume
+                  Variable: '{{ InstanceAddAdditionalEBS }}'
+                  StringEquals: "true"
+              Default: BranchInitEphemeralDisk
+
+          - name: CreateAdditionalVolume
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: CreateVolume
+              AvailabilityZone: "{{ InstanceAvailabilityZone }}"
+              Size: {{ InstanceAdditionalEBSSize }}
+              VolumeType: "{{ InstanceAdditionalEBSType }}"
+              SnapshotId: "{{ InstanceAdditionalEBSSnapshotId }}"
+              TagSpecifications:
+                - ResourceType: volume
+                  Tags:
+                    - Key: cloudrig
+                      Value: "true"
+                    - Key: cloudrig:stackname
+                      Value: !Ref "AWS::StackName"
+            outputs:
+              - Name: VolumeId
+                Type: String
+                Selector: '$.VolumeId'
+
+          - name: AttachAdditionalVolumeToTheInstance
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: AttachVolume
+              InstanceId: '{{ InstanceId }}'
+              VolumeId: '{{ CreateAdditionalVolume.VolumeId }}'
+              Device: 'xvdf'
+
+          - name: InitAdditionalVolumeInOperatingSystem
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - '$disks = Get-Disk | Where-Object { $_.Size -ge "50GB" }'
+                  - "foreach ($disk in $disks) { Update-Disk -Number $disk.Number }"
+                  - "$part_size = Get-PartitionSupportedSize -DriveLetter D"
+                  - "$current_part = Get-Partition -DriveLetter D"
+                  - "if($part_size.SizeMax -gt $current_part.Size){Resize-Partition -DriveLetter D -Size $part_size.SizeMax}"
+                  - 'return "ok"'
+
+          - name: BranchInitEphemeralDisk
+            action: aws:branch
+            inputs:
+              Choices:
+                - NextStep: InitEphemeralDiskInOperatingSystem
+                  Variable: !Ref InstanceType
+                  StringEquals: "g2.2xlarge"
+              Default: BranchShouldReboot
+
+          - name: InitEphemeralDiskInOperatingSystem
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - 'C:\ProgramData\Amazon\EC2-Windows\Launch\Scripts\InitializeDisks.ps1'
+                  - 'return "ok"'
+
+          - name: BranchShouldReboot
+            action: aws:branch
+            inputs:
+              Choices:
+                - NextStep: RebootInstanceToFinaliseDriveInit
+                  Variable: "{{ InstanceType }}"
+                  StringEquals: "g2.2xlarge"
+                - NextStep: RebootInstanceToFinaliseDriveInit
+                  Variable: '{{ InstanceAddAdditionalEBS }}'
+                  StringEquals: "true"
+              Default: End
+
+          - name: RebootInstanceToFinaliseDriveInit
+            action: 'aws:executeAwsApi'
+            inputs:
+              Service: ec2
+              Api: RebootInstance
+              InstanceId: '{{ WaitForInstanceToBeReady.InstanceId }}'
+
+          - name: WaitForTheInstanceToBeReady
+            action: aws:executeAutomation
+            maxAttempts: 1
+            timeoutSeconds: 3600
+            onFailure: Abort
+            inputs:
+              DocumentName: !Ref CloudRIGWaitInstanceToBeReadySSMAutomation
+
+          - name: End
+            action: aws:sleep
+            isEnd: true
+            inputs:
+              Duration: PT01S
+
+  CloudRIGInitialiseOperatingSystemSSMAutomation:
+    Type: 'AWS::SSM::Document'
+    Properties:
+      DocumentType: Automation
+      Tags:
+        - Key: "cloudrig"
+          Value: "true"
+        - Key: "cloudrig:stackname"
+          Value: !Ref AWS::StackName
+      Content:
+        description: CloudRIG Initialise the operating system
+        schemaVersion: '0.3'
+        assumeRole: !GetAtt CloudRIGAutomationIamRole.Arn
+        parameters:
+          InstanceId:
+            type: String
+            description: (Required) The InstanceId
+        mainSteps:
+          - name: RemovePlannedShutdown
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - 'Unregister-ScheduledTask -TaskName CloudRIGScheduledShutdownNotification -Confirm:$false'
+                  - 'Unregister-ScheduledTask -TaskName CloudRIGScheduledShutdown -Confirm:$false'
+                  - 'Unregister-ScheduledTask -TaskName CloudRIGTerminationChecker -Confirm:$false'
+                  - 'return "ok"'
+
+          - name: CreateShutdownNotifierScripts
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - >
+                    @'
+                    param (
+                        [string]$reason = "AWS"
+                    )
+                    Add-Type -AssemblyName System.Windows.Forms
+                    $Screen = [System.Windows.Forms.Screen]::PrimaryScreen
+                    $Message = "Your computer is going to shut down in about a minute. `nNow's a good time to save your game."
+
+                    If ($reason -eq "AWS") {
+                        $Message += "`n(AWS is kicking you off)"
+                    } Else {
+                        $Message += "`n(You scheduled it to shut down this billing hour)"
+                    }
+
+                    $Form = New-Object system.Windows.Forms.Form
+                    $Form.BackColor = "#3e86ca"
+                    $Form.TopMost = $true
+                    $Form.Width = $Screen.Bounds.Width
+                    $Form.Height = 300
+                    $Form.FormBorderStyle = 'None'
+                    $Form.StartPosition = 'Manual'
+                    $Form.Top = 0
+                    $Form.Left = ($Screen.Bounds.Width - $Form.Width)/2
+
+                    $Text = New-Object system.windows.Forms.Label
+                    $Text.Text = $Message
+                    $Text.TextAlign = 'MiddleCenter'
+                    $Text.Height = 200
+                    $Text.Width = $Screen.Bounds.Width / 2
+                    $TextX = ($Form.Width - $Text.Width) / 2
+                    $Text.Location = New-Object System.Drawing.Point($TextX,25)
+                    $Text.Font = "Microsoft Sans Serif,24"
+                    $Text.ForeColor = "#ffffff"
+                    $Form.controls.Add($Text)
+
+                    If ($reason -eq "AWS") {
+
+                        $Ack = New-Object System.Windows.Forms.Button
+                        $Ack.Text = 'OK'
+                        $Ack.Width = 200
+                        $Ack.Height = 35
+                        $Ack.FlatStyle = 'Flat'
+                        $Ack.FlatAppearance.BorderColor = '#FFFFFF'
+                        $Ack.Font = "Microsoft Sans Serif,14,style=Bold"
+                        $Ack.ForeColor = "#ffffff"
+                        $AckX = $Form.Width / 2 - $Ack.Width / 2
+                        $AckY = $Form.Height - $Ack.Height - 5
+                        $Ack.Location = new-object system.drawing.point($AckX,$AckY)
+
+                        $Ack.Add_Click({
+                            $Form.Close()
+                        })
+
+                        $Form.Controls.Add($Ack)
+
+                    } else {
+                        $width = 200
+                        $okBtn = New-Object System.Windows.Forms.Button
+                        $okBtn.Text = 'OK'
+                        $okBtn.Width = $width
+                        $okBtn.Height = 35
+                        $okBtn.FlatStyle = 'Flat'
+                        $okBtn.FlatAppearance.BorderColor = '#FFFFFF'
+                        $okBtn.Font = "Microsoft Sans Serif,14,style=Bold"
+                        $okBtn.ForeColor = "#ffffff"
+                        $okBtnX = ($Form.Width / 2) - $width - 25
+                        $okBtnY = $Form.Height - $okBtn.Height - 5
+                        $okBtn.Location = New-Object System.Drawing.Point($okBtnX,$okBtnY)
+
+                        $okBtn.Add_Click({
+                            Unregister-ScheduledTask -TaskName CloudRIGScheduledShutdownNotification -Confirm:$false
+
+                            $Form.Close()
+                        })
+
+                        $Form.Controls.Add($okBtn)
+
+                        $cancelBtn = New-Object System.Windows.Forms.Button
+                        $cancelBtn.Text = 'Cancel Shutdown'
+                        $cancelBtn.Width = 200
+                        $cancelBtn.Height = 35
+                        $cancelBtn.FlatStyle = 'Flat'
+                        $cancelBtn.FlatAppearance.BorderColor = '#FFFFFF'
+                        $cancelBtn.Font = "Microsoft Sans Serif,14,style=Bold"
+                        $cancelBtn.ForeColor = "#ffffff"
+                        $cancelBtnX = ($Form.Width / 2)
+                        $cancelBtnY = $Form.Height - $cancelBtn.Height - 5
+                        $cancelBtn.Location = New-Object System.Drawing.Point($cancelBtnX,$cancelBtnY)
+
+                        $cancelBtn.Add_Click({
+                            $cancelBtn.Text = 'Cancelling...'
+                            $cancelBtn.Enabled = $false
+                            $okBtn.Enabled = $false
+                            Unregister-ScheduledTask -TaskName CloudRIGScheduledShutdownNotification -Confirm:$false
+                            Unregister-ScheduledTask -TaskName CloudRIGScheduledShutdown -Confirm:$false
+                            $webclient = new-object net.webclient
+                            $instanceid = $webclient.Downloadstring('http://169.254.169.254/latest/meta-data/instance-id')
+                            Remove-EC2Tag -Resource $instanceid -Tag @{Key="scheduledstop"} -Force
+                            $Form.Close()
+                        })
+
+                        $Form.Controls.Add($cancelBtn)
+                    }
+
+                    [void]$Form.ShowDialog()
+                    $Form.Dispose()
+                    '@ | Out-File 'c:\cloudRIG\Notify-Shutdown.ps1'
+
+                    return "ok"
+
+          - name: CreateTerminationCheckerScript
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - >
+                    @'
+                    Dim shell,command
+                    command = "powershell.exe -nologo & { try { wget http://169.254.169.254/latest/meta-data/spot/termination-time | Unregister-ScheduledTask -TaskName CloudRIGTerminationChecker -Confirm:$false | PowerShell.exe -windowstyle hidden { & c:\cloudRIG\Notify-Shutdown.ps1 } } catch [Net.WebException] { } }"
+                    Set shell = CreateObject("WScript.Shell")
+                    shell.Run command,0
+                    '@ | Out-File 'c:\cloudRIG\Termination-Checker.vbs'
+
+                    return "ok"
+
+          - name: ScheduleReset
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - 'C:\ProgramData\Amazon\EC2-Windows\Launch\Scripts\InitializeInstance.ps1 -Schedule'
+
+          - name: ScheduleTeminationChecker
+            action: aws:runCommand
+            inputs:
+              DocumentName: AWS-RunPowerShellScript
+              InstanceIds:
+                - '{{ InstanceId }}'
+              Parameters:
+                commands:
+                  - '$action = New-ScheduledTaskAction -Execute "c:\cloudRIG\Termination-Checker.vbs"'
+                  - '$trigger = New-ScheduledTaskTrigger -Once -At (get-date).Date -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Minutes 1402)'
+                  - '$principal = New-ScheduledTaskPrincipal -UserId (Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -expand UserName)'
+                  - '$task = New-ScheduledTask -Action $action -Trigger $trigger -Principal $principal'
+                  - 'Register-ScheduledTask CloudRIGTerminationChecker -InputObject $task'
 
 Outputs:
   CloudRIGSpotFleetId:

@@ -1,4 +1,4 @@
-$disks = Get-Disk | Where-Object { $_.Size -ge "50GB" }
+$disks = Get-Disk | Where-Object { $_.Size -ge '50GB' }
 foreach ($disk in $disks) { Update-Disk -Number $disk.Number }
 $part_size = Get-PartitionSupportedSize -DriveLetter D
 $current_part = Get-Partition -DriveLetter D

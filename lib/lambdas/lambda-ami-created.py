@@ -23,7 +23,30 @@ def get_image_description(ami_id):
 	return ami_description
 
 
-def tag_image_and_snapshots(ami_id, ami_description):
+def get_additional_disk_snapshot_id(automation_execution_id):
+	snapshots = ec2.describe_snapshots(Filters=[
+		{
+			'Key': 'tag:cloudformation:stackname',
+			'Value': os.environ['CLOUDRIG_CLOUDFORMATION_STACK_NAME']
+		},
+		{
+			'Key': 'cloudrig:additionaldisk',
+			'Value': 'true'
+		},
+		{
+			'Key': 'cloudrig:automationexecutionid',
+			'Value': automation_execution_id
+		}
+	])['Snapshots']
+
+	if snapshots:
+		return snapshots[0]
+	else:
+		logger.error('Could not find the additional disk snapshot')
+		return None
+
+
+def tag_image_and_snapshots(ami_id, ami_description, automation_execution_id):
 	# Listing the snapshots and tag them
 	resources_to_tag = []
 	resources_to_tag.append(ami_id)
@@ -40,6 +63,10 @@ def tag_image_and_snapshots(ami_id, ami_description):
 		{
 			'Key': "cloudrig:cloudformation:stackname",
 			'Value': os.environ['CLOUDRIG_CLOUDFORMATION_STACK_NAME']
+		},
+		{
+			'Key': "cloudrig:automationexecutionid",
+		 	'Value': automation_execution_id
 		}
 	])
 
@@ -60,16 +87,20 @@ def get_stack_description():
 	return cloudformation_stack
 
 
-def update_cloudformation_with_new_ami(ami_id):
-	logger.info(f'Updating the CloudFormation parameters with the new AMI {ami_id}...')
+def update_cloudformation_with_new_ami(ami_id, additional_snapshot_id):
+	logger.info(f'Updating the CloudFormation parameters with the new AMI {ami_id} (additional_snaptshot_id={additional_snaptshot_id})...')
 
 	cloudformation_stack = get_stack_description()
 
 	# Update the parameters
 	new_parameters = cloudformation_stack['Parameters']
 	for parameter in new_parameters:
+		# - Update the AMI to use new one
 		if parameter.get('ParameterKey') == 'InstanceAMIId':
 			parameter['ParameterValue'] = ami_id
+		# - If an additional disk has been created, we also add it to the CloudFormation
+		if parameter.get('ParameterKey') == 'InstanceAdditionalEBSSnapshotId' and additional_snaptshot_id:
+			parameter['ParameterValue'] = additional_snapshot_id
 		else:
 			del parameter['ParameterValue']
 			parameter['UsePreviousValue'] = True
@@ -94,7 +125,7 @@ def update_cloudformation_with_new_ami(ami_id):
 			time.sleep(5)
 
 
-def deregister_previous_image(new_ami_id):
+def cleanup_previous_resources(new_ami_id, additional_snapshot_id):
 	amis = ec2.describe_images(Filters=[
 		{
 			'Name': 'tag:cloudrig',
@@ -127,29 +158,55 @@ def deregister_previous_image(new_ami_id):
 				logger.info(f'Deleting the previous AMI snapshot {snapshot_id}...')
 				ec2.delete_snapshot(SnapshotId=snapshot_id)
 
+	# If there is additional disk snapshot, we remove the old ones
+	if additional_snapshot_id:
+		logger.info(f'Cleaning-up the additional disk snapshots...')
+		snapshots = ec2.describe_snapshots(Filters=[
+    		{
+    			'Key': 'tag:cloudformation:stackname',
+    			'Value': os.environ['CLOUDRIG_CLOUDFORMATION_STACK_NAME']
+    		},
+    		{
+    			'Key': 'cloudrig:additionaldisk',
+    			'Value': 'true'
+    		}
+    	])['Snapshots']
+
+		for snapshot in snapshots:
+			snapshot_id = snapshot['SnapshotId']
+			# Ignore the new snapshot
+			if snapshot_id != additional_snapshot_id:
+				logger.info(f'Deleting the previous additional snapshot {snapshot_id}...')
+				ec2.delete_snapshot(SnapshotId=snapshot_id)
+
 
 def handler(event, context):
 	logger.info("Save state lambda triggered")
 	logger.info('Event: ' + json.dumps(event))
 
 	ami_id = event['ImageId']
+	automation_execution_id = event['AutomationId']
 
 	logger.info(f"Handling image creation finished for AMI: {ami_id}")
 
 	# Fetch the AMI description
 	ami = get_image_description(ami_id)
 
+	additional_snapshot_id = None
+	if os.environ['CLOUDRIG_HAS_ADDITIONAL_DISK'] == "true":
+		additional_snapshot_id = get_additional_disk_snapshot_id(automation_execution_id)
+
 	# Check the status of the image creation
 	if ami['State'] != 'available':
 		raise Exception(f'Image {ami_id} creation failed. Aborting...')
 
 	# Tag the AMI and the snapshots
-	tag_image_and_snapshots(ami_id, ami)
+	tag_image_and_snapshots(ami_id, ami, automation_execution_id)
 
 	# Update the CloudFormation stack with the new AMI Id
-	update_cloudformation_with_new_ami(ami_id)
+	update_cloudformation_with_new_ami(ami_id, additional_snapshot_id)
 
-	# Deregister the previous image
-	deregister_previous_image(ami_id)
+	# Deregister the previous image and the previous additional snapshot
+	cleanup_previous_resources(ami_id, additional_snapshot_id)
 
 	logger.info(f'Done handling the AMI {ami_id} creation process')
