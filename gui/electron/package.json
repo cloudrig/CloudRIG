@@ -38,7 +38,7 @@
 		"afterSign": "./signature-helper/afterSignHook.js"
 	},
 	"dependencies": {
-		"async": "^3.1.0",
+		"async": "^3.2.2",
 		"cloudriglib": "link:../../lib",
 		"electron-context-menu": "^0.13.0",
 		"electron-log": "^3.0.6",

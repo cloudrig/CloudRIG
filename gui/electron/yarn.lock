@@ -68,10 +68,10 @@ astral-regex@^1.0.0:
   resolved "https://registry.yarnpkg.com/astral-regex/-/astral-regex-1.0.0.tgz#6c8c3fb827dd43ee3918f27b82782ab7658a6fd9"
   integrity sha512-+Ryf6g3BKoRc7jfp7ad8tM4TtMiaWvbF/1/sQcZPkkS7ag3D5nMBCe2UfOTONtAkaG0tO0ij3C5Lwmf1EiyjHg==
 
-async@^3.1.0:
-  version "3.1.0"
-  resolved "https://registry.yarnpkg.com/async/-/async-3.1.0.tgz#42b3b12ae1b74927b5217d8c0016baaf62463772"
-  integrity sha512-4vx/aaY6j/j3Lw3fbCHNWP0pPaTCew3F6F3hYyl/tHs/ndmV1q7NW9T5yuJ2XAGwdQrP+6Wu20x06U4APo/iQQ==
+async@^3.1.0, async@^3.2.2:
+  version "3.2.2"
+  resolved "https://registry.yarnpkg.com/async/-/async-3.2.2.tgz#2eb7671034bb2194d45d30e31e24ec7e7f9670cd"
+  integrity sha512-H0E+qZaDEfx/FY4t7iLRv1W2fFI6+pyCeTw1uN20AQPiwqwM6ojPxHxdLv4z8hi2DtnW9BOckSspLucW7pIE5g==
 
 asynckit@^0.4.0:
   version "0.4.0"
@@ -182,8 +182,17 @@ cli-truncate@^2.0.0:
     string-width "^4.1.0"
 
 "cloudriglib@link:../../lib":
-  version "0.0.0"
-  uid ""
+  version "0.0.1"
+  dependencies:
+    async "^3.1.0"
+    aws-sdk "^2.493.0"
+    child-process "^1.0.2"
+    electron-log "^3.0.6"
+    external-ip "^2.1.1"
+    jszip "^3.2.2"
+    moment "^2.24.0"
+    request "^2.88.0"
+    tmp "^0.1.0"
 
 code-point-at@^1.0.0:
   version "1.1.0"
