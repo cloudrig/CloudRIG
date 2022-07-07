@@ -19,7 +19,7 @@
 		"electron-log": "^3.0.6",
 		"external-ip": "^2.1.1",
 		"jszip": "^3.2.2",
-		"moment": "^2.24.0",
+		"moment": "^2.29.4",
 		"request": "^2.88.0",
 		"tmp": "^0.1.0"
 	}
