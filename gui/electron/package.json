@@ -47,7 +47,7 @@
 		"request": "^2.88.0"
 	},
 	"devDependencies": {
-		"electron": "^4.2.6",
+		"electron": "^18.3.7",
 		"electron-notarize": "^0.1.1"
 	}
 }
